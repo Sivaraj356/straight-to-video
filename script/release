@@ -21,9 +21,10 @@ case "$BUMP_TYPE" in
   *) echo "Invalid bump type: $BUMP_TYPE (must be patch|minor|major)" >&2; exit 2 ;;
 esac
 
-# Ensure working copy is clean (no staged/unstaged changes)
-if [ -n "$(git status --porcelain)" ]; then
+# Ensure working copy is clean (no staged/unstaged changes), except for CHANGELOG.md
+if [ -n "$(git status --porcelain | grep -v '^ M CHANGELOG.md$')" ]; then
   echo "Working tree is not clean. Commit or stash changes before releasing." >&2
+  echo "(CHANGELOG.md modifications are allowed)"
   git status --short
   exit 1
 fi
@@ -57,7 +58,7 @@ mv "$tmp_file" "$RB_VERSION_FILE"
 bundle
 
 # Commit version bumps as a single commit; bundler's rake release will tag
-git add package.json package-lock.json Gemfile.lock "$RB_VERSION_FILE" app/assets/javascripts
+git add CHANGELOG.md package.json package-lock.json Gemfile.lock "$RB_VERSION_FILE" app/assets/javascripts
 git commit -m "$VERSION"
 
 # Publish to npm
