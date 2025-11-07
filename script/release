@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+usage() {
+  echo "Usage: script/release {patch|minor|major}" >&2
+}
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  usage
+  exit 0
+fi
+
+if [ $# -ne 1 ]; then
+  usage
+  exit 2
+fi
+
+BUMP_TYPE="$1"
+case "$BUMP_TYPE" in
+  patch|minor|major) ;;
+  *) echo "Invalid bump type: $BUMP_TYPE (must be patch|minor|major)" >&2; exit 2 ;;
+esac
+
+# 1) ensure working copy is clean (no staged/unstaged changes)
+if [ -n "$(git status --porcelain)" ]; then
+  echo "Working tree is not clean. Commit or stash changes before releasing." >&2
+  git status --short
+  exit 1
+fi
+
+# 3) bump version (also creates a commit and tag)
+echo "Bumping version: npm version $BUMP_TYPE"
+npm version "$BUMP_TYPE"
+
+# 4) publish (will be interactive if 2FA is enabled)
+echo "Publishing to npm (2FA may prompt)..."
+npm publish
+
+# 5) after successful publish, read package.json version and kick JSPM build
+# Prefer Node for portability over jq
+VERSION=$(node -p "require('./package.json').version")
+if [ -z "${VERSION:-}" ]; then
+  echo "Unable to determine version from package.json" >&2
+  exit 1
+fi
+
+echo "Triggering JSPM build for straight-to-video@${VERSION}..."
+curl "https://api.jspm.io/build/straight-to-video@${VERSION}" >/dev/null || true
+echo "Done. Released straight-to-video@${VERSION}."

@@ -6,9 +6,11 @@
 
 [![Certified Shovelware](https://justin.searls.co/img/shovelware.svg)](https://justin.searls.co/shovelware/)
 
-`straight-to-video` is a little library that will optimize videos entirely in the browser using [WebCodecs API](https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API). It's pre-configured to meet the requirements of the [Instagram API](https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media#video-specifications), since that's as good a lowest-common-denominator as any.
+`straight-to-video` optimizes video entirely in the browser using [WebCodecs API](https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API). Files are remuxed & re-encoded to meet the requirements of the [Instagram API](https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media#video-specifications), which is as good a lowest-common-denominator as any.
 
-I wrote this because I'm cheap and I was sick of waiting all day to upload 4K videos to [my Rails app](https://beckygram.com), only to have to [pay Heroku tooth-and-nail](https://judoscale.com/blog/priced-out-of-heroku) to transcode those videos for me.
+I'm not here to save the planet—I wrote this because I'm cheap and I was sick of waiting all day to upload 4K videos to [my Rails app](https://beckygram.com), only to have to [pay Heroku tooth-and-nail](https://judoscale.com/blog/priced-out-of-heroku) to transcode those videos for me. That said, **if everyone were to plug this into their HTML forms tomorrow, it'd save users and developers a gobsmacking amount of bandwidth and server costs.**
+
+Seriously, most off-iPhone videos are **in the neighborhood of 90-95% smaller after running through `straight-to-video` optimization**, sometimes shaving tens of minutes from the time it would take to upload at 30 Mbps.
 
 ## Install
 
@@ -124,4 +126,29 @@ These might be wired up in the same form like this:
 
   <!-- The rest of your form -->
 </form>
+```
+
+## Development
+
+If you want to work on this code, install [ffmpeg](https://ffmpeg.org) and the dependencies:
+
+```
+brew install ffmpeg
+npm install
+```
+
+You can run the tests (which run against both webkit and Chrome) with:
+
+```
+# Open graphical browsers
+./script/test
+
+# Run headlessly
+CI=true ./script/test
+```
+
+You can run the server at [localhost:8080](http://localhost:8080) (which hosts the demo site) with:
+
+```
+npm run dev
 ```

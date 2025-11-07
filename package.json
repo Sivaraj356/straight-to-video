@@ -1,7 +1,7 @@
 {
   "name": "straight-to-video",
   "version": "0.0.2",
-  "description": "ESM-only browser module: client-side optimization helpers + Stimulus controller.",
+  "description": "Browser-based, hardware-accelerated video upload optimization",
   "type": "module",
   "exports": {
     ".": "./index.js"
@@ -18,12 +18,11 @@
     "mediabunny": "^1.24.4"
   },
   "keywords": [
-    "esm",
+    "webcodecs",
     "stimulus",
     "video",
     "upload",
-    "importmap",
-    "rails"
+    "instagram"
   ],
   "repository": {
     "type": "git",
