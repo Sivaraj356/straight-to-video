@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.4
+
+- Rename mediabunny.min.mjs to mediabunny.min.js because Rails apparently doesn't know the mjs MIME type is text/javascript not text/plain
+
 ## 0.0.3
 
 - Add a rubygem because `bin/importmap pin` cannot possibly work with mediabunny.
