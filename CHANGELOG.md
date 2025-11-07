@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.3
+
+- Add a rubygem because `bin/importmap pin` cannot possibly work with mediabunny.
+
 ## 0.0.2
 
 - Change `canOptimizeVideo` return shape to `{ ok, reason, message }`.

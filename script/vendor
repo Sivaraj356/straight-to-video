@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# Vendor browser assets from dependencies into app assets
+# - Copies mediabunny bundle into app/assets/javascripts
+# - Copies this package's index.js to straight-to-video.js in app/assets/javascripts
+
+# Always execute from repo root
+cd "$(dirname "$0")/.."
+
+dest_dir="app/assets/javascripts"
+mb_pkg_json="node_modules/mediabunny/package.json"
+mb_src="node_modules/mediabunny/dist/bundles/mediabunny.min.mjs"
+stv_src="index.js"
+stv_dest="$dest_dir/straight-to-video.js"
+
+# Ensure required files are present
+if [[ ! -f "$mb_pkg_json" || ! -f "$mb_src" ]]; then
+  echo "mediabunny is not installed or expected files are missing." >&2
+  echo "Run: npm install" >&2
+  exit 1
+fi
+
+if [[ ! -f "$stv_src" ]]; then
+  echo "Missing $stv_src in repo root." >&2
+  exit 1
+fi
+
+# Read versions using Node for portability
+mb_version=$(node -p "require('./$mb_pkg_json').version")
+stv_version=$(node -p "require('./package.json').version")
+
+mkdir -p "$dest_dir"
+
+# 1) Copy mediabunny bundle and prepend header
+mb_dest="$dest_dir/$(basename "$mb_src")"
+cp -f "$mb_src" "$mb_dest"
+{
+  printf '// mediabunny@%s vendored by the straight_to_video gem\n' "$mb_version"
+  cat "$mb_dest"
+} >"$mb_dest.tmp" && mv "$mb_dest.tmp" "$mb_dest"
+echo "Vendored mediabunny@${mb_version} -> $mb_dest"
+
+# 2) Copy our bundle as straight-to-video.js and prepend header
+cp -f "$stv_src" "$stv_dest"
+{
+  printf '// straight-to-video@%s vendored by the straight_to_video gem\n' "$stv_version"
+  cat "$stv_dest"
+} >"$stv_dest.tmp" && mv "$stv_dest.tmp" "$stv_dest"
+echo "Vendored straight-to-video@${stv_version} -> $stv_dest"
+
+echo "Done."

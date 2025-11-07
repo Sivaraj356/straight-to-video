@@ -25,7 +25,7 @@ npm install straight-to-video
 Or if you're one of us Ruby on Rails weirdos:
 
 ```
-bin/importmap pin straight-to-video
+bundle add straight_to_video
 ```
 
 ## API
