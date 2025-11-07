@@ -33,7 +33,7 @@ stv_version=$(node -p "require('./package.json').version")
 mkdir -p "$dest_dir"
 
 # 1) Copy mediabunny bundle and prepend header
-mb_dest="$dest_dir/$(basename "$mb_src")"
+mb_dest="$dest_dir/$(basename "$mb_src" .mjs).js"
 cp -f "$mb_src" "$mb_dest"
 {
   printf '// mediabunny@%s vendored by the straight_to_video gem\n' "$mb_version"
