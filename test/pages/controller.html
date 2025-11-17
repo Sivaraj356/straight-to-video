@@ -86,7 +86,11 @@
         console.log('[controller-debug]', label, detail)
         logEl.textContent += line + '\n'
         logEl.scrollTop = logEl.scrollHeight
-        try { sessionStorage.setItem(LOG_KEY, logEl.textContent) } catch (_) {}
+        try {
+          sessionStorage.setItem(LOG_KEY, logEl.textContent)
+        } catch (err) {
+          console.warn('[controller-debug] failed to persist log to sessionStorage', err)
+        }
       }
 
       try {
@@ -95,11 +99,17 @@
           logEl.textContent = saved
           logEl.scrollTop = logEl.scrollHeight
         }
-      } catch (_) {}
+      } catch (err) {
+        console.warn('[controller-debug] failed to restore log from sessionStorage', err)
+      }
 
       clearLogButton.addEventListener('click', () => {
         logEl.textContent = ''
-        try { sessionStorage.setItem(LOG_KEY, '') } catch (_) {}
+        try {
+          sessionStorage.setItem(LOG_KEY, '')
+        } catch (err) {
+          console.warn('[controller-debug] failed to clear persisted log in sessionStorage', err)
+        }
       })
 
       copyLogButton.addEventListener('click', async () => {
@@ -148,7 +158,11 @@
         appendLog('file.done.event', { changed })
 
         if (!downloadLink) return
-        try { URL.revokeObjectURL(downloadLink.href) } catch (_) {}
+        try {
+          URL.revokeObjectURL(downloadLink.href)
+        } catch (err) {
+          console.warn('[controller-debug] URL.revokeObjectURL failed; continuing', err)
+        }
         if (!changed || !file.files?.length) {
           downloadLink.style.display = 'none'
           downloadLink.removeAttribute('href')

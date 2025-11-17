@@ -124,7 +124,9 @@
             lineno: e?.lineno,
             colno: e?.colno
           })
-        } catch (_) {}
+        } catch (err) {
+          console.warn('[optimize-debug] failed to append window.error to log', err)
+        }
       })
 
       window.addEventListener('unhandledrejection', (e) => {
@@ -132,7 +134,9 @@
           appendLog('window.unhandledrejection', {
             reason: e?.reason && (e.reason.message || String(e.reason))
           })
-        } catch (_) {}
+        } catch (err) {
+          console.warn('[optimize-debug] failed to append window.unhandledrejection to log', err)
+        }
       })
 
       input.addEventListener('change', () => {
@@ -150,7 +154,11 @@
         p.value = 0; pct.textContent = '0%'
         if (dl) {
           dl.style.display = 'none'
-          try { URL.revokeObjectURL(dl.href) } catch (_) {}
+          try {
+            URL.revokeObjectURL(dl.href)
+          } catch (err) {
+            console.warn('[optimize-debug] URL.revokeObjectURL failed while clearing download link', err)
+          }
         }
         let f = input.files?.[0]
         appendLog('submit.start', { hasFile: !!f, useNoCt: !!useNoCt.checked })
@@ -198,7 +206,9 @@
                 name: dl.download,
                 hrefLength: dl.href?.length || 0
               })
-            } catch (_) {}
+            } catch (err) {
+              console.warn('[optimize-debug] failed to create or update download link', err)
+            }
           }
           appendLog('submit.upload.start', {
             size: outFile.size,

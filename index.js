@@ -232,7 +232,11 @@ async function encodeVideo ({ file, srcMeta, onProgress }) {
     v.addEventListener('loadedmetadata', onLoaded)
     v.addEventListener('error', onError)
     v.src = url
-    try { v.load() } catch (_) {}
+    try {
+      v.load()
+    } catch (err) {
+      console.warn('straight-to-video: video.load() threw; continuing without explicit load()', err)
+    }
   })
   const canvas = document.createElement('canvas'); canvas.width = targetWidth; canvas.height = targetHeight
   const ctx = canvas.getContext('2d', { alpha: false })
@@ -258,7 +262,11 @@ async function encodeVideo ({ file, srcMeta, onProgress }) {
     vf.close()
 
     if (typeof onProgress === 'function') {
-      try { onProgress(Math.min(1, (i + 1) / frames)) } catch (_) {}
+      try {
+        onProgress(Math.min(1, (i + 1) / frames))
+      } catch (err) {
+        console.warn('straight-to-video: onProgress callback threw; ignoring error', err)
+      }
     }
   }
   await ve.flush()
