@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.6
+
+- fix iOS Safari Stimulus controller hang by making `seeked` waits robust
+
 ## 0.0.5
 
 - unscrew up the extension in the importmap 🤦‍♂️
