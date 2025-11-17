@@ -1,4 +1,4 @@
-// straight-to-video@0.0.6 vendored by the straight_to_video gem
+// straight-to-video@0.0.7 vendored by the straight_to_video gem
 // straight-to-video - https://github.com/searlsco/straight-to-video
 
 // ----- External imports -----
@@ -233,7 +233,11 @@ async function encodeVideo ({ file, srcMeta, onProgress }) {
     v.addEventListener('loadedmetadata', onLoaded)
     v.addEventListener('error', onError)
     v.src = url
-    try { v.load() } catch (_) {}
+    try {
+      v.load()
+    } catch (err) {
+      console.warn('straight-to-video: video.load() threw; continuing without explicit load()', err)
+    }
   })
   const canvas = document.createElement('canvas'); canvas.width = targetWidth; canvas.height = targetHeight
   const ctx = canvas.getContext('2d', { alpha: false })
@@ -244,9 +248,7 @@ async function encodeVideo ({ file, srcMeta, onProgress }) {
     const drawTime = i === 0
       ? Math.min(Math.max(0, t + (step * 0.5)), Math.max(0.000001, durationCfr - 0.000001))
       : targetTime
-    if (i === 0) {}
     await seekOnce(v, drawTime)
-    if (i === 0) {}
     const budgetMs = Math.min(34, Math.max(17, Math.round(step * 1000)))
     const presented = await waitForFrameReady(v, budgetMs)
     if (!presented && i === 0) {
@@ -261,7 +263,11 @@ async function encodeVideo ({ file, srcMeta, onProgress }) {
     vf.close()
 
     if (typeof onProgress === 'function') {
-      try { onProgress(Math.min(1, (i + 1) / frames)) } catch (_) {}
+      try {
+        onProgress(Math.min(1, (i + 1) / frames))
+      } catch (err) {
+        console.warn('straight-to-video: onProgress callback threw; ignoring error', err)
+      }
     }
   }
   await ve.flush()
@@ -352,8 +358,11 @@ function registerStraightToVideoController (app, opts = {}) {
     }
 
     async _processFileInput (fileInput) {
-      const ua = typeof navigator !== 'undefined' && navigator.userAgent ? navigator.userAgent : ''
-      const isIos = /iP(hone|ad|od)/.test(ua)
+      if (!this._pendingProcesses) this._pendingProcesses = new WeakMap()
+      const existing = this._pendingProcesses.get(fileInput)
+      if (existing) return existing
+
+      const job = (async () => {
       this._markFlag(fileInput, 'processing')
       fileInput.disabled = true
       try {
@@ -372,6 +381,13 @@ function registerStraightToVideoController (app, opts = {}) {
         fileInput.disabled = false
         this._unmarkFlag(fileInput, 'processing')
       }
+      })()
+
+      this._pendingProcesses.set(fileInput, job)
+      job.finally(() => {
+        if (this._pendingProcesses?.get(fileInput) === job) this._pendingProcesses.delete(fileInput)
+      })
+      return job
     }
 
     _fire (el, name, detail = {}) {

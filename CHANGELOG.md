@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.7
+
+- guard against a race condition for forms that subscribe to change events but don't disable submission while optimize is already underway
+
 ## 0.0.6
 
 - fix iOS Safari Stimulus controller hang by making `seeked` waits robust
