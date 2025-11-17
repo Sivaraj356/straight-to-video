@@ -243,9 +243,7 @@ async function encodeVideo ({ file, srcMeta, onProgress }) {
     const drawTime = i === 0
       ? Math.min(Math.max(0, t + (step * 0.5)), Math.max(0.000001, durationCfr - 0.000001))
       : targetTime
-    if (i === 0) {}
     await seekOnce(v, drawTime)
-    if (i === 0) {}
     const budgetMs = Math.min(34, Math.max(17, Math.round(step * 1000)))
     const presented = await waitForFrameReady(v, budgetMs)
     if (!presented && i === 0) {
@@ -356,8 +354,6 @@ function registerStraightToVideoController (app, opts = {}) {
       if (existing) return existing
 
       const job = (async () => {
-      const ua = typeof navigator !== 'undefined' && navigator.userAgent ? navigator.userAgent : ''
-      const isIos = /iP(hone|ad|od)/.test(ua)
       this._markFlag(fileInput, 'processing')
       fileInput.disabled = true
       try {
