@@ -13,6 +13,15 @@ const TARGET_AUDIO_BITRATE = 96_000
 const TARGET_AUDIO_SR = 48_000
 const TARGET_AUDIO_CHANNELS = 2
 
+// ----- Debug logging (optional) -----
+function debugLog (label, detail) {
+  try {
+    if (typeof window !== 'undefined' && typeof window.straightToVideoDebug === 'function') {
+      window.straightToVideoDebug(label, detail)
+    }
+  } catch (_) {}
+}
+
 // ----- Video metadata probe -----
 async function probeVideo (file) {
   return new Promise((resolve, reject) => {
@@ -117,15 +126,36 @@ async function canOptimizeVideo (file) {
 }
 
 async function optimizeVideo (file, { onProgress } = {}) {
-  if (!(file instanceof File)) return { changed: false, file }
+  if (!(file instanceof File)) {
+    debugLog('optimizeVideo.skip.not-file', { valueType: typeof file })
+    return { changed: false, file }
+  }
   const type = file.type || ''
-  if (!/^video\//i.test(type)) return { changed: false, file }
-  if (typeof window === 'undefined' || !('VideoEncoder' in window)) return { changed: false, file }
+  if (!/^video\//i.test(type)) {
+    debugLog('optimizeVideo.skip.non-video', { type })
+    return { changed: false, file }
+  }
+  if (typeof window === 'undefined' || !('VideoEncoder' in window)) {
+    debugLog('optimizeVideo.skip.no-webcodecs', {})
+    return { changed: false, file }
+  }
   const feas = await canOptimizeVideo(file)
+  debugLog('optimizeVideo.feasibility', feas)
   if (!feas.ok) return { changed: false, file }
 
   const srcMeta = await probeVideo(file)
+  debugLog('optimizeVideo.begin-encode', {
+    width: srcMeta.width,
+    height: srcMeta.height,
+    duration: srcMeta.duration
+  })
   const newFile = await encodeVideo({ file, srcMeta: { w: srcMeta.width, h: srcMeta.height, duration: srcMeta.duration }, onProgress })
+  debugLog('optimizeVideo.complete', {
+    changed: true,
+    inputBytes: file.size,
+    outputBytes: newFile.size,
+    name: newFile.name
+  })
   return { changed: true, file: newFile }
 }
 
@@ -148,6 +178,20 @@ async function waitForFrameReady (video, budgetMs) {
   })
 }
 
+async function seekOnce (video, time) {
+  if (!video) return
+  const t = Number.isFinite(time) ? time : 0
+  if (Math.abs(video.currentTime - t) < 1e-6) return
+  await new Promise((resolve) => {
+    const onSeeked = () => {
+      video.removeEventListener('seeked', onSeeked)
+      resolve()
+    }
+    video.addEventListener('seeked', onSeeked, { once: true })
+    video.currentTime = t
+  })
+}
+
 async function encodeVideo ({ file, srcMeta, onProgress }) {
   const w = srcMeta.w
   const h = srcMeta.h
@@ -161,8 +205,24 @@ async function encodeVideo ({ file, srcMeta, onProgress }) {
   const step = 1 / Math.max(1, targetFps)
   const frames = Math.max(1, Math.floor(durationCfr / step))
 
+  debugLog('encode.begin', {
+    width: w,
+    height: h,
+    duration: durationCfr,
+    targetWidth,
+    targetHeight,
+    targetFps,
+    frames
+  })
+
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target: new BufferTarget() })
   const { codecId, config: usedCfg } = await selectVideoEncoderConfig({ width: targetWidth, height: targetHeight, fps: targetFps })
+  debugLog('encode.config-selected', {
+    codecId,
+    width: targetWidth,
+    height: targetHeight,
+    targetFps
+  })
   const videoTrack = new EncodedVideoPacketSource(codecId)
   output.addVideoTrack(videoTrack, { frameRate: targetFps })
 
@@ -172,7 +232,13 @@ async function encodeVideo ({ file, srcMeta, onProgress }) {
     if (typeof m === 'string' && m.includes('Unsupported audio codec') && m.includes('apac')) return
     _warn.apply(console, args)
   }
+  debugLog('encode.audio.decode.start', { duration: durationCfr })
   const audioBuffer = await decodeAudioPCM(file, { duration: durationCfr })
+  debugLog('encode.audio.decode.done', {
+    sampleRate: audioBuffer.sampleRate,
+    channels: audioBuffer.numberOfChannels,
+    frames: audioBuffer.length
+  })
   console.warn = _warn
 
   const audioSource = new AudioSampleSource({
@@ -188,7 +254,9 @@ async function encodeVideo ({ file, srcMeta, onProgress }) {
   })
   output.addAudioTrack(audioSource)
 
+  debugLog('encode.output.start', {})
   await output.start()
+  debugLog('encode.output.started', {})
 
   let codecDesc = null
   const pendingPackets = []
@@ -200,12 +268,37 @@ async function encodeVideo ({ file, srcMeta, onProgress }) {
     error: () => {}
   })
   ve.configure(usedCfg)
+  debugLog('encode.videoEncoder.configured', {
+    codec: usedCfg.codec,
+    codedWidth: usedCfg.width,
+    codedHeight: usedCfg.height,
+    targetFps
+  })
 
   const url = URL.createObjectURL(file)
   const v = document.createElement('video')
   v.muted = true; v.preload = 'auto'; v.playsInline = true
-  v.src = url
-  await new Promise((resolve, reject) => { v.onloadedmetadata = resolve; v.onerror = () => reject(new Error('video load failed')) })
+  await new Promise((resolve, reject) => {
+    const onLoaded = () => {
+      v.removeEventListener('loadedmetadata', onLoaded)
+      v.removeEventListener('error', onError)
+      resolve()
+    }
+    const onError = () => {
+      v.removeEventListener('loadedmetadata', onLoaded)
+      v.removeEventListener('error', onError)
+      reject(new Error('video load failed'))
+    }
+    v.addEventListener('loadedmetadata', onLoaded)
+    v.addEventListener('error', onError)
+    v.src = url
+    try { v.load() } catch (_) {}
+  })
+  debugLog('encode.video.metadata.loaded', {
+    width: v.videoWidth,
+    height: v.videoHeight,
+    duration: v.duration
+  })
   const canvas = document.createElement('canvas'); canvas.width = targetWidth; canvas.height = targetHeight
   const ctx = canvas.getContext('2d', { alpha: false })
 
@@ -215,13 +308,22 @@ async function encodeVideo ({ file, srcMeta, onProgress }) {
     const drawTime = i === 0
       ? Math.min(Math.max(0, t + (step * 0.5)), Math.max(0.000001, durationCfr - 0.000001))
       : targetTime
+    if (i === 0) {
+      debugLog('encode.frame.seek.start', { index: i, drawTime })
+    }
 
-    await new Promise((resolve) => { v.currentTime = drawTime; v.onseeked = () => resolve() })
+    await seekOnce(v, drawTime)
+    if (i === 0) {
+      debugLog('encode.frame.seek.done', { index: i, currentTime: v.currentTime, readyState: v.readyState })
+    }
     const budgetMs = Math.min(34, Math.max(17, Math.round(step * 1000)))
     const presented = await waitForFrameReady(v, budgetMs)
     if (!presented && i === 0) {
       const nudge = Math.min(step * 0.25, 0.004)
-      await new Promise((resolve) => { v.currentTime = Math.min(drawTime + nudge, Math.max(0.000001, durationCfr - 0.000001)); v.onseeked = () => resolve() })
+      const target = Math.min(drawTime + nudge, Math.max(0.000001, durationCfr - 0.000001))
+      debugLog('encode.frame.seek.nudge', { index: i, nudge })
+      await seekOnce(v, target)
+      debugLog('encode.frame.seek.nudge.done', { index: i, currentTime: v.currentTime, readyState: v.readyState })
     }
 
     ctx.drawImage(v, 0, 0, canvas.width, canvas.height)
@@ -233,7 +335,9 @@ async function encodeVideo ({ file, srcMeta, onProgress }) {
       try { onProgress(Math.min(1, (i + 1) / frames)) } catch (_) {}
     }
   }
+  debugLog('encode.video.flush.start', { pendingPackets: pendingPackets.length })
   await ve.flush()
+  debugLog('encode.video.flush.done', { pendingPackets: pendingPackets.length })
   URL.revokeObjectURL(url)
 
   const muxCount = Math.min(frames, pendingPackets.length)
@@ -249,13 +353,19 @@ async function encodeVideo ({ file, srcMeta, onProgress }) {
   const samplesPerVideoFrame = TARGET_AUDIO_SR / targetFps
   const totalVideoSamples = muxCount * samplesPerVideoFrame
   const targetSamples = Math.max(1024, Math.floor(totalVideoSamples / 1024) * 1024 - 2048)
+  debugLog('encode.audio.render.start', { targetSamples })
   const audioExact = await renderStereo48kExact(audioBuffer, targetSamples)
+  debugLog('encode.audio.render.done', { frames: audioExact.length, sampleRate: audioExact.sampleRate })
   const interleaved = interleaveStereoF32(audioExact)
   const sample = new AudioSample({ format: 'f32', sampleRate: TARGET_AUDIO_SR, numberOfChannels: TARGET_AUDIO_CHANNELS, timestamp: 0, data: interleaved })
+  debugLog('encode.audio.add.start', { bytes: interleaved.byteLength })
   await audioSource.add(sample)
   audioSource.close()
+  debugLog('encode.audio.add.done', {})
 
+  debugLog('encode.output.finalize.start', {})
   await output.finalize()
+  debugLog('encode.output.finalize.done', {})
   const { buffer } = output.target
   const payload = new Uint8Array(buffer)
   const nm = file.name; const dot = nm.lastIndexOf('.')
@@ -275,16 +385,26 @@ function registerStraightToVideoController (app, opts = {}) {
     static get values () { return { submitting: Boolean } }
 
     connect () {
+      debugLog('controller.connect', { elementId: this.element?.id || null })
       this._onWindowSubmitCapture = (e) => this._onWindowSubmitCaptureHandler(e)
       window.addEventListener('submit', this._onWindowSubmitCapture, { capture: true })
     }
 
     disconnect () {
+      debugLog('controller.disconnect', { elementId: this.element?.id || null })
       if (this._onWindowSubmitCapture) window.removeEventListener('submit', this._onWindowSubmitCapture, { capture: true })
     }
 
     async change (e) {
       const fileInput = e.target
+      debugLog('controller.change', {
+        elementId: this.element?.id || null,
+        inputId: fileInput?.id || null,
+        hasFiles: !!fileInput?.files?.length,
+        submitting: this.submittingValue,
+        processingFlag: fileInput ? this._hasFlag(fileInput, 'processing') : null,
+        processedFlag: fileInput ? this._hasFlag(fileInput, 'processed') : null
+      })
       if (!fileInput?.files?.length || this.submittingValue || this._hasFlag(fileInput, 'processing')) return
       this._unmarkFlag(fileInput, 'processed')
       delete fileInput.dataset.summary
@@ -294,6 +414,13 @@ function registerStraightToVideoController (app, opts = {}) {
     async _onWindowSubmitCaptureHandler (e) {
       if (e.target !== this.element) return
       const toProcess = this.fileInputTargets.filter((fi) => fi?.files?.length && !this._hasFlag(fi, 'processed'))
+      debugLog('controller.submit.capture', {
+        elementId: this.element?.id || null,
+        submitterPresent: !!e.submitter,
+        totalFileInputs: this.fileInputTargets.length,
+        toProcessCount: toProcess.length,
+        submitting: this.submittingValue
+      })
       if (toProcess.length === 0) return
 
       e.preventDefault()
@@ -318,35 +445,92 @@ function registerStraightToVideoController (app, opts = {}) {
 
     submittingValueChanged () {
       const controls = this.element.querySelectorAll('input, select, textarea, button')
+      debugLog('controller.submitting.changed', {
+        elementId: this.element?.id || null,
+        submitting: this.submittingValue,
+        controlCount: controls.length
+      })
       controls.forEach(el => { el.disabled = this.submittingValue })
     }
 
     async _processFileInput (fileInput) {
+      const ua = typeof navigator !== 'undefined' && navigator.userAgent ? navigator.userAgent : ''
+      const isIos = /iP(hone|ad|od)/.test(ua)
+      debugLog('controller.process.start', {
+        elementId: this.element?.id || null,
+        inputId: fileInput?.id || null,
+        isIos,
+        hasFiles: !!fileInput?.files?.length,
+        disabled: !!fileInput?.disabled,
+        processingFlag: this._hasFlag(fileInput, 'processing'),
+        processedFlag: this._hasFlag(fileInput, 'processed')
+      })
       this._markFlag(fileInput, 'processing')
       fileInput.disabled = true
+      debugLog('controller.process.marked-processing', {
+        inputId: fileInput?.id || null,
+        disabled: !!fileInput?.disabled,
+        processingFlag: this._hasFlag(fileInput, 'processing'),
+        processedFlag: this._hasFlag(fileInput, 'processed')
+      })
       try {
         const original = fileInput.files[0]
+        debugLog('controller.process.before-optimize', {
+          inputId: fileInput?.id || null,
+          name: original?.name,
+          size: original?.size,
+          type: original?.type
+        })
         const { changed, file } = await optimizeVideo(original, {
           onProgress: (ratio) => this._fire(fileInput, 'progress', { progress: Math.round(ratio * 100) })
+        })
+        debugLog('controller.process.after-optimize', {
+          inputId: fileInput?.id || null,
+          changed,
+          outputName: file?.name,
+          outputSize: file?.size,
+          outputType: file?.type
         })
         if (changed) this._swapFile(fileInput, file)
         this._markFlag(fileInput, 'processed')
         this._fire(fileInput, 'done', { changed })
       } catch (err) {
+        debugLog('controller.process.error', {
+          inputId: fileInput?.id || null,
+          message: err?.message || String(err)
+        })
         console.error(err)
         this._markFlag(fileInput, 'processed')
         this._fire(fileInput, 'error', { error: err })
       } finally {
         fileInput.disabled = false
         this._unmarkFlag(fileInput, 'processing')
+        debugLog('controller.process.finally', {
+          inputId: fileInput?.id || null,
+          disabled: !!fileInput?.disabled,
+          processingFlag: this._hasFlag(fileInput, 'processing'),
+          processedFlag: this._hasFlag(fileInput, 'processed')
+        })
       }
     }
 
     _fire (el, name, detail = {}) {
+      debugLog('controller.event', {
+        name,
+        detail,
+        elementId: el?.id || null,
+        submitting: this.submittingValue,
+        processedFlag: el ? this._hasFlag(el, 'processed') : null,
+        processingFlag: el ? this._hasFlag(el, 'processing') : null
+      })
       el.dispatchEvent(new CustomEvent(`straight-to-video:${name}`, { bubbles: true, cancelable: true, detail }))
     }
 
     _resubmit (submitter) {
+      debugLog('controller.resubmit', {
+        elementId: this.element?.id || null,
+        submitterPresent: !!submitter
+      })
       setTimeout(() => { submitter ? this.element.requestSubmit(submitter) : this.element.requestSubmit() }, 0)
     }
   }
