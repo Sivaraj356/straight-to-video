@@ -351,6 +351,11 @@ function registerStraightToVideoController (app, opts = {}) {
     }
 
     async _processFileInput (fileInput) {
+      if (!this._pendingProcesses) this._pendingProcesses = new WeakMap()
+      const existing = this._pendingProcesses.get(fileInput)
+      if (existing) return existing
+
+      const job = (async () => {
       const ua = typeof navigator !== 'undefined' && navigator.userAgent ? navigator.userAgent : ''
       const isIos = /iP(hone|ad|od)/.test(ua)
       this._markFlag(fileInput, 'processing')
@@ -371,6 +376,13 @@ function registerStraightToVideoController (app, opts = {}) {
         fileInput.disabled = false
         this._unmarkFlag(fileInput, 'processing')
       }
+      })()
+
+      this._pendingProcesses.set(fileInput, job)
+      job.finally(() => {
+        if (this._pendingProcesses?.get(fileInput) === job) this._pendingProcesses.delete(fileInput)
+      })
+      return job
     }
 
     _fire (el, name, detail = {}) {
